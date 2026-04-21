@@ -8,7 +8,14 @@ const DEFAULT_WORKBOOK = "suitbrowser_rules.xlsx";
 const APPLICATION_COLUMN = "Applications";
 const PREPARATION_COLUMN = "Preparation (to choose in the browser)";
 const NAME_COLUMN = "Name in the SUITbrowser";
+const MITOPEDIA_COLUMN = "MitoPedia page";
 const PROPERTY_START_AFTER = "Applications 2";
+const SCORE_LABELS = {
+  0: "Not applicable",
+  1: "Not recommended",
+  2: "Kind of suitable",
+  3: "Very suitable",
+};
 
 const appSelect = document.getElementById("applicationSelect");
 const appLayout = document.getElementById("appLayout");
@@ -74,6 +81,30 @@ function parseNumericScore(value) {
     return null;
   }
   return Number(normalized);
+}
+
+function formatScoreDisplay(value) {
+  const normalized = String(value ?? "").trim();
+  if (normalized === "") {
+    return "";
+  }
+
+  return normalized
+    .split("/")
+    .map((part) => part.trim())
+    .map((part) => {
+      const numericScore = parseNumericScore(part);
+      return numericScore === null ? part : SCORE_LABELS[numericScore];
+    })
+    .join(" / ");
+}
+
+function sanitizeUrl(value) {
+  const url = String(value ?? "").trim();
+  if (!/^https?:\/\//i.test(url)) {
+    return "";
+  }
+  return url;
 }
 
 function setLoadingState(message) {
@@ -262,6 +293,7 @@ function getGroupedRows(rows, selectedPropertyList) {
       groups.set(name, {
         name,
         preparations: new Set(),
+        mitoPediaLinks: new Set(),
         propertyValues: new Map(),
         propertyScores: new Map(),
       });
@@ -272,6 +304,11 @@ function getGroupedRows(rows, selectedPropertyList) {
 
     if (preparation) {
       group.preparations.add(preparation);
+    }
+
+    const mitoPediaLink = sanitizeUrl(row[MITOPEDIA_COLUMN]);
+    if (mitoPediaLink) {
+      group.mitoPediaLinks.add(mitoPediaLink);
     }
 
     selectedPropertyList.forEach((property) => {
@@ -384,11 +421,12 @@ function renderTable() {
             classes.push("empty-score");
           }
 
-          return `<td class="${classes.join(" ")}">${escapeHtml(value)}</td>`;
+          return `<td class="${classes.join(" ")}" title="${escapeHtml(value)}">${escapeHtml(formatScoreDisplay(value))}</td>`;
         })
         .join("");
 
       const preparation = [...group.preparations].sort().join(", ");
+      const mitoPediaLink = [...group.mitoPediaLinks][0] || "";
 
       return `
         <tr>
@@ -396,6 +434,7 @@ function renderTable() {
             ${escapeHtml(group.name)}
             <small>Average score: ${group.averageScore.toFixed(2)}</small>
             ${preparation ? `<small>${escapeHtml(preparation)}</small>` : ""}
+            ${mitoPediaLink ? `<a class="row-meta-link" href="${escapeHtml(mitoPediaLink)}" target="_blank" rel="noreferrer">MitoPedia page</a>` : ""}
           </th>
           ${scoreCells}
         </tr>

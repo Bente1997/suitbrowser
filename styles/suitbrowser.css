@@ -166,18 +166,17 @@ h2 {
 }
 
 .legend-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 10px;
 }
 
 .score-pill {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 42px;
+  justify-content: flex-start;
+  min-width: 0;
   min-height: 42px;
-  padding: 0 12px;
+  padding: 10px 14px;
   border-radius: 999px;
   font-weight: 800;
 }
@@ -253,6 +252,7 @@ h2 {
 .property-list {
   max-height: 330px;
   overflow: auto;
+  margin-top: 10px;
   padding-right: 4px;
   align-content: start;
 }
@@ -412,6 +412,20 @@ h2 {
   font-weight: 500;
 }
 
+.row-meta-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.row-meta-link:hover {
+  text-decoration: underline;
+}
+
 .corner-header {
   position: sticky;
   left: 0;
@@ -421,32 +435,35 @@ h2 {
   padding: 16px 18px;
 }
 
-.diag-header {
-  width: 78px;
-  min-width: 78px;
-  height: 170px;
+.matrix-table th.diag-header {
+  width: 126px;
+  min-width: 126px;
+  padding: 24px 18px;
+  height: auto;
   vertical-align: bottom;
 }
 
-.diag-header > span {
-  display: inline-block;
-  transform: translate(-8px, 24px) rotate(-57deg);
-  transform-origin: left bottom;
-  white-space: nowrap;
+.matrix-table th.diag-header > span {
+  display: block;
+  white-space: normal;
+  word-break: break-word;
   font-size: 0.84rem;
   font-weight: 700;
+  line-height: 1.25;
   color: var(--text);
 }
 
 .score-cell {
   display: table-cell;
-  width: 78px;
-  min-width: 78px;
-  height: 58px;
-  padding: 0 12px;
+  width: 126px;
+  min-width: 126px;
+  height: 74px;
+  padding: 10px 12px;
   border-radius: 0;
-  font-size: 1rem;
+  font-size: 0.85rem;
+  line-height: 1.25;
   font-weight: 800;
+  white-space: normal;
   vertical-align: middle;
 }
 
