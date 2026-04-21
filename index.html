@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SUIT Protocol Finder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles/suitbrowser.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="./scripts/suitbrowser.js"></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">SUITbrowser</p>
+        <h1>Protocol finder</h1>
+      </div>
+      <div class="hero-card legend-card">
+        <div class="legend-title">Suitability score</div>
+        <div class="legend-grid">
+          <span class="score-pill score-0">0</span>
+          <span class="score-pill score-1">1</span>
+          <span class="score-pill score-2">2</span>
+          <span class="score-pill score-3">3</span>
+        </div>
+      </div>
+    </header>
+
+    <main id="appLayout" class="layout">
+      <aside id="controlsPanel" class="panel controls-panel">
+        <div class="controls-toolbar">
+          <h2>Filters</h2>
+          <button
+            id="toggleFiltersBtn"
+            class="ghost-btn controls-toggle"
+            type="button"
+            aria-expanded="true"
+            aria-controls="controlsPanelContent"
+          >
+            Hide filters
+          </button>
+        </div>
+
+        <div id="controlsPanelContent" class="controls-panel-content">
+          <section class="panel-section">
+            <h2>Filter protocols</h2>
+
+            <label class="field-label" for="applicationSelect">Application</label>
+            <select id="applicationSelect" class="select-field" disabled>
+              <option value="">Loading workbook...</option>
+            </select>
+
+            <div class="field-block">
+              <div class="field-label-row">
+                <label class="field-label">Preparation</label>
+                <button id="clearPreparationsBtn" class="tiny-btn" type="button">Clear</button>
+              </div>
+              <div id="preparationOptions" class="chip-list empty-state-inline">
+                No preparations available yet.
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-section properties-section">
+            <div class="section-heading-row">
+              <h2>Properties to compare</h2>
+              <div class="inline-actions">
+                <button id="selectAllVisiblePropsBtn" class="tiny-btn" type="button">All</button>
+                <button id="clearPropertiesBtn" class="tiny-btn" type="button">Clear</button>
+              </div>
+            </div>
+            <label class="field-label" for="propertySearch">Search properties</label>
+            <input id="propertySearch" class="text-field" type="text" placeholder="Search property names..." disabled />
+            <div id="propertyOptions" class="property-list empty-state-inline">
+              Loading workbook...
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <section class="panel results-panel">
+        <div class="results-toolbar">
+          <div>
+            <h2>Protocol matrix</h2>
+            <p id="resultsSummary" class="subtle-text">Loading workbook...</p>
+          </div>
+          <div class="results-actions">
+            <button id="resetFiltersBtn" class="ghost-btn" type="button" disabled>Reset filters</button>
+          </div>
+        </div>
+
+        <div id="tableWrap" class="table-wrap empty-wrap">
+          <div class="empty-state-box">
+            <h3>No data yet</h3>
+            <p>Once the bundled workbook is loaded, protocols will appear as rows and selected properties as diagonal column headers.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
