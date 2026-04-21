@@ -88,6 +88,7 @@
             <p id="resultsSummary" class="subtle-text">Loading workbook...</p>
           </div>
           <div class="results-actions">
+            <button id="openMatrixModalBtn" class="ghost-btn" type="button" disabled aria-haspopup="dialog" aria-controls="matrixModal">Enlarge</button>
             <button id="resetFiltersBtn" class="ghost-btn" type="button" disabled>Reset filters</button>
           </div>
         </div>
@@ -100,6 +101,25 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <div id="matrixModal" class="modal-shell" hidden>
+    <div id="matrixModalBackdrop" class="modal-backdrop"></div>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="matrixModalTitle">
+      <div class="modal-toolbar">
+        <div>
+          <h2 id="matrixModalTitle">Protocol matrix</h2>
+          <p id="matrixModalSummary" class="subtle-text">Loading workbook...</p>
+        </div>
+        <button id="closeMatrixModalBtn" class="ghost-btn" type="button">Close</button>
+      </div>
+      <div id="matrixModalWrap" class="table-wrap modal-table-wrap empty-wrap">
+        <div class="empty-state-box">
+          <h3>No data yet</h3>
+          <p>The enlarged matrix will appear here once data is available.</p>
+        </div>
+      </div>
+    </div>
   </div>
 </body>
 </html>

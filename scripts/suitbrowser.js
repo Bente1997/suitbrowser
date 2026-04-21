@@ -8,6 +8,7 @@ const DEFAULT_WORKBOOK = "suitbrowser_rules.xlsx";
 const APPLICATION_COLUMN = "Applications";
 const PREPARATION_COLUMN = "Preparation (to choose in the browser)";
 const NAME_COLUMN = "Name in the SUITbrowser";
+const TECHNICAL_NAME_COLUMN = "SUIT technical name";
 const MITOPEDIA_COLUMN = "MitoPedia page";
 const PROPERTY_START_AFTER = "Applications 2";
 const SCORE_LABELS = {
@@ -24,6 +25,12 @@ const propertySearch = document.getElementById("propertySearch");
 const propertyOptions = document.getElementById("propertyOptions");
 const resultsSummary = document.getElementById("resultsSummary");
 const tableWrap = document.getElementById("tableWrap");
+const openMatrixModalBtn = document.getElementById("openMatrixModalBtn");
+const matrixModal = document.getElementById("matrixModal");
+const matrixModalBackdrop = document.getElementById("matrixModalBackdrop");
+const closeMatrixModalBtn = document.getElementById("closeMatrixModalBtn");
+const matrixModalWrap = document.getElementById("matrixModalWrap");
+const matrixModalSummary = document.getElementById("matrixModalSummary");
 const fileStatus = document.getElementById("fileStatus");
 const reloadDefaultBtn = document.getElementById("reloadDefaultBtn");
 const clearPreparationsBtn = document.getElementById("clearPreparationsBtn");
@@ -233,6 +240,26 @@ function renderEmptyTable(message, detail) {
   `;
 }
 
+function renderEmptyModalTable(message, detail) {
+  if (!matrixModalWrap) {
+    return;
+  }
+
+  matrixModalWrap.classList.add("empty-wrap");
+  matrixModalWrap.innerHTML = `
+    <div class="empty-state-box">
+      <h3>${escapeHtml(message)}</h3>
+      <p>${escapeHtml(detail)}</p>
+    </div>
+  `;
+}
+
+function setModalSummary(text) {
+  if (matrixModalSummary) {
+    matrixModalSummary.textContent = text;
+  }
+}
+
 function getFilteredRows() {
   const selectedApplication = appSelect.value;
 
@@ -293,6 +320,7 @@ function getGroupedRows(rows, selectedPropertyList) {
       groups.set(name, {
         name,
         preparations: new Set(),
+        technicalNames: new Set(),
         mitoPediaLinks: new Set(),
         propertyValues: new Map(),
         propertyScores: new Map(),
@@ -304,6 +332,11 @@ function getGroupedRows(rows, selectedPropertyList) {
 
     if (preparation) {
       group.preparations.add(preparation);
+    }
+
+    const technicalName = String(row[TECHNICAL_NAME_COLUMN] ?? "").trim();
+    if (technicalName) {
+      group.technicalNames.add(technicalName);
     }
 
     const mitoPediaLink = sanitizeUrl(row[MITOPEDIA_COLUMN]);
@@ -349,56 +382,7 @@ function getGroupedRows(rows, selectedPropertyList) {
   });
 }
 
-function renderTable() {
-  if (!rawData.length) {
-    renderEmptyTable("No data yet", "The workbook has not been loaded.");
-    return;
-  }
-
-  const selectedPropertyList = getPropertyColumns().filter((property) =>
-    selectedProperties.has(property)
-  );
-  const visibleRows = getFilteredRows().filter((row) => {
-    if (!selectedPropertyList.length) {
-      return true;
-    }
-
-    return selectedPropertyList.some((property) => hasPositiveScore(row, property));
-  });
-  const groupedRows = getGroupedRows(visibleRows, selectedPropertyList);
-  const rankedRows = groupedRows
-    .filter((group) => group.averageScore > 0)
-    .sort((a, b) => {
-      if (b.averageScore !== a.averageScore) {
-        return b.averageScore - a.averageScore;
-      }
-      return a.name.localeCompare(b.name);
-    });
-
-  resetFiltersBtn.disabled = false;
-
-  if (!selectedPropertyList.length) {
-    resultsSummary.textContent = `${groupedRows.length} protocol${groupedRows.length === 1 ? "" : "s"} match the current filters. Select one or more properties to compare.`;
-    renderEmptyTable(
-      "No properties selected",
-      "Choose one or more properties to render the protocol matrix."
-    );
-    return;
-  }
-
-  if (!rankedRows.length) {
-    resultsSummary.textContent = "No protocols match the current filters.";
-    renderEmptyTable(
-      "No matching protocols",
-      "Try a different application or preparation selection."
-    );
-    return;
-  }
-
-  resultsSummary.textContent = `${rankedRows.length} protocol${rankedRows.length === 1 ? "" : "s"} shown, sorted by average suitability across ${selectedPropertyList.length} propert${selectedPropertyList.length === 1 ? "y" : "ies"}.`;
-
-  tableWrap.classList.remove("empty-wrap");
-
+function buildTableMarkup(rankedRows, selectedPropertyList) {
   const headerCells = selectedPropertyList
     .map(
       (property) =>
@@ -426,15 +410,21 @@ function renderTable() {
         .join("");
 
       const preparation = [...group.preparations].sort().join(", ");
+      const technicalName = [...group.technicalNames].sort().join(" / ");
       const mitoPediaLink = [...group.mitoPediaLinks][0] || "";
 
       return `
         <tr>
           <th scope="row" class="row-header">
-            ${escapeHtml(group.name)}
+            <details class="row-protocol-details">
+              <summary>${escapeHtml(group.name)}</summary>
+              <div class="row-protocol-meta">
+                ${technicalName ? `<small class="row-tech-name">${escapeHtml(technicalName)}</small>` : ""}
+                ${mitoPediaLink ? `<a class="row-meta-link" href="${escapeHtml(mitoPediaLink)}" target="_blank" rel="noreferrer">MitoPedia page</a>` : ""}
+              </div>
+            </details>
             <small>Average score: ${group.averageScore.toFixed(2)}</small>
             ${preparation ? `<small>${escapeHtml(preparation)}</small>` : ""}
-            ${mitoPediaLink ? `<a class="row-meta-link" href="${escapeHtml(mitoPediaLink)}" target="_blank" rel="noreferrer">MitoPedia page</a>` : ""}
           </th>
           ${scoreCells}
         </tr>
@@ -442,7 +432,7 @@ function renderTable() {
     })
     .join("");
 
-  tableWrap.innerHTML = `
+  return `
     <table class="matrix-table">
       <thead>
         <tr>
@@ -455,6 +445,100 @@ function renderTable() {
       </tbody>
     </table>
   `;
+}
+
+function setMatrixMarkup(markup) {
+  tableWrap.classList.remove("empty-wrap");
+  tableWrap.innerHTML = markup;
+
+  if (matrixModalWrap) {
+    matrixModalWrap.classList.remove("empty-wrap");
+    matrixModalWrap.innerHTML = markup;
+  }
+}
+
+function setMatrixEmptyState(message, detail) {
+  renderEmptyTable(message, detail);
+  renderEmptyModalTable(message, detail);
+  if (openMatrixModalBtn) {
+    openMatrixModalBtn.disabled = true;
+  }
+}
+
+function openMatrixModal() {
+  if (!matrixModal || !openMatrixModalBtn || openMatrixModalBtn.disabled) {
+    return;
+  }
+
+  matrixModal.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+function closeMatrixModal() {
+  if (!matrixModal) {
+    return;
+  }
+
+  matrixModal.hidden = true;
+  document.body.classList.remove("modal-open");
+}
+
+function renderTable() {
+  if (!rawData.length) {
+    setMatrixEmptyState("No data yet", "The workbook has not been loaded.");
+    setModalSummary("Loading workbook...");
+    return;
+  }
+
+  const selectedPropertyList = getPropertyColumns().filter((property) =>
+    selectedProperties.has(property)
+  );
+  const visibleRows = getFilteredRows().filter((row) => {
+    if (!selectedPropertyList.length) {
+      return true;
+    }
+
+    return selectedPropertyList.some((property) => hasPositiveScore(row, property));
+  });
+  const groupedRows = getGroupedRows(visibleRows, selectedPropertyList);
+  const rankedRows = groupedRows
+    .filter((group) => group.averageScore > 0)
+    .sort((a, b) => {
+      if (b.averageScore !== a.averageScore) {
+        return b.averageScore - a.averageScore;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+  resetFiltersBtn.disabled = false;
+
+  if (!selectedPropertyList.length) {
+    resultsSummary.textContent = `${groupedRows.length} protocol${groupedRows.length === 1 ? "" : "s"} match the current filters. Select one or more properties to compare.`;
+    setModalSummary(resultsSummary.textContent);
+    setMatrixEmptyState(
+      "No properties selected",
+      "Choose one or more properties to render the protocol matrix."
+    );
+    return;
+  }
+
+  if (!rankedRows.length) {
+    resultsSummary.textContent = "No protocols match the current filters.";
+    setModalSummary(resultsSummary.textContent);
+    setMatrixEmptyState(
+      "No matching protocols",
+      "Try a different application or preparation selection."
+    );
+    return;
+  }
+
+  resultsSummary.textContent = `${rankedRows.length} protocol${rankedRows.length === 1 ? "" : "s"} shown, sorted by average suitability across ${selectedPropertyList.length} propert${selectedPropertyList.length === 1 ? "y" : "ies"}.`;
+  setModalSummary(resultsSummary.textContent);
+
+  setMatrixMarkup(buildTableMarkup(rankedRows, selectedPropertyList));
+  if (openMatrixModalBtn) {
+    openMatrixModalBtn.disabled = false;
+  }
 }
 
 function setupUi() {
@@ -507,7 +591,8 @@ async function fetchDefaultWorkbook() {
       fileStatus.innerHTML = `Could not load <strong>${DEFAULT_WORKBOOK}</strong>.${protocolHint}`;
     }
     resultsSummary.textContent = "Workbook failed to load.";
-    renderEmptyTable(
+    setModalSummary(resultsSummary.textContent);
+    setMatrixEmptyState(
       "Workbook not loaded",
       `The page could not fetch ${DEFAULT_WORKBOOK}.${protocolHint.trim()}`
     );
@@ -530,6 +615,24 @@ if (toggleFiltersBtn) {
     setFiltersCollapsed(collapsed);
   });
 }
+
+if (openMatrixModalBtn) {
+  openMatrixModalBtn.addEventListener("click", openMatrixModal);
+}
+
+if (closeMatrixModalBtn) {
+  closeMatrixModalBtn.addEventListener("click", closeMatrixModal);
+}
+
+if (matrixModalBackdrop) {
+  matrixModalBackdrop.addEventListener("click", closeMatrixModal);
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && matrixModal && !matrixModal.hidden) {
+    closeMatrixModal();
+  }
+});
 
 clearPreparationsBtn.addEventListener("click", () => {
   selectedPreparations = new Set();

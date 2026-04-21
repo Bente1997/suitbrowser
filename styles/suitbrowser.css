@@ -28,6 +28,10 @@ body {
   color: var(--text);
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 .page-shell {
   max-width: 1600px;
   margin: 0 auto;
@@ -223,6 +227,10 @@ h2 {
 
 .field-block + .field-block { margin-top: 16px; }
 
+.select-field + .field-block {
+  margin-top: 20px;
+}
+
 .select-field,
 .text-field {
   width: 100%;
@@ -342,6 +350,58 @@ h2 {
   cursor: not-allowed;
 }
 
+.modal-shell[hidden] {
+  display: none;
+}
+
+.modal-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(23, 32, 51, 0.38);
+  backdrop-filter: blur(10px);
+}
+
+.modal-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(1500px, calc(100vw - 48px));
+  height: min(92vh, 980px);
+  padding: 22px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 28px;
+  box-shadow: 0 24px 80px rgba(23, 32, 51, 0.2);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+}
+
+.modal-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal-toolbar h2 {
+  margin-bottom: 8px;
+}
+
+.modal-table-wrap {
+  margin-top: 0;
+  min-height: 0;
+  height: 100%;
+}
+
 .table-wrap {
   margin-top: 18px;
   overflow: auto;
@@ -400,22 +460,69 @@ h2 {
   z-index: 2;
   min-width: 280px;
   background: #fff;
-  padding: 16px 18px;
+  padding: 30px 18px;
   text-align: left;
   font-weight: 700;
 }
 
 .row-header small {
   display: block;
-  margin-top: 5px;
+  margin-top: 4px;
   color: var(--muted);
   font-weight: 500;
+  line-height: 1.25;
+}
+
+.row-protocol-details {
+  margin: 0;
+}
+
+.row-protocol-details summary {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.row-protocol-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.row-protocol-details summary::after {
+  content: "Show details";
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.row-protocol-details[open] summary::after {
+  content: "Hide details";
+}
+
+.row-protocol-meta {
+  margin-top: 8px;
+}
+
+.row-protocol-meta small,
+.row-protocol-meta .row-meta-link {
+  display: block;
+}
+
+.row-tech-name {
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.25;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
 }
 
 .row-meta-link {
   display: inline-flex;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 4px;
   color: var(--accent);
   font-size: 0.88rem;
   font-weight: 600;
@@ -429,23 +536,39 @@ h2 {
 .corner-header {
   position: sticky;
   left: 0;
-  z-index: 4;
+  top: 0;
+  z-index: 6;
   min-width: 280px;
   text-align: left;
   padding: 16px 18px;
+  background: linear-gradient(180deg, #fbfcff, #f2f6fc);
+}
+
+.corner-header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -12px;
+  bottom: 0;
+  width: 12px;
+  background: linear-gradient(180deg, #fbfcff, #f2f6fc);
+  border-right: 1px solid #edf1f7;
+  pointer-events: none;
 }
 
 .matrix-table th.diag-header {
   width: 126px;
   min-width: 126px;
-  padding: 24px 18px;
+  padding: 18px 16px;
   height: auto;
   vertical-align: bottom;
+  overflow: hidden;
 }
 
 .matrix-table th.diag-header > span {
   display: block;
   white-space: normal;
+  overflow-wrap: anywhere;
   word-break: break-word;
   font-size: 0.84rem;
   font-weight: 700;
@@ -458,7 +581,7 @@ h2 {
   width: 126px;
   min-width: 126px;
   height: 74px;
-  padding: 10px 12px;
+  padding: 10px 18px;
   border-radius: 0;
   font-size: 0.85rem;
   line-height: 1.25;
@@ -518,4 +641,11 @@ h2 {
   .results-panel { padding: 16px; }
   .row-header,
   .corner-header { min-width: 220px; }
+  .modal-shell { padding: 12px; }
+  .modal-dialog {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+    padding: 16px;
+    border-radius: 20px;
+  }
 }
