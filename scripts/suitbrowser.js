@@ -3,10 +3,18 @@ let filteredProperties = [];
 let filteredAvailableProperties = [];
 let selectedPreparations = new Set();
 let selectedProperties = new Set();
+let selectedSortProperty = "";
+let displayHeaderTextByColumn = new Map();
+let displayValueTextByColumn = new Map();
+let applicationPropertyAvailabilityByName = new Map();
+let preparationPropertyAvailabilityByName = new Map();
+let propertyLinkByName = new Map();
+let preparationLinkByName = new Map();
 
-const DEFAULT_WORKBOOK = "suitbrowser_rules.xlsx";
+const DEFAULT_WORKBOOK = "suitbrowser_rules_new.xlsx";
 const APPLICATION_COLUMN = "Applications";
 const PREPARATION_COLUMN = "Preparation (to choose in the browser)";
+const PROTOCOL_PREPARATION_COLUMN = "Preparation";
 const NAME_COLUMN = "Name in the SUITbrowser";
 const TECHNICAL_NAME_COLUMN = "SUIT technical name";
 const MITOPEDIA_COLUMN = "MitoPedia page";
@@ -34,9 +42,10 @@ const matrixModalSummary = document.getElementById("matrixModalSummary");
 const fileStatus = document.getElementById("fileStatus");
 const reloadDefaultBtn = document.getElementById("reloadDefaultBtn");
 const clearPreparationsBtn = document.getElementById("clearPreparationsBtn");
+const selectAllVisiblePreparationsBtn = document.getElementById("selectAllVisiblePreparationsBtn");
 const selectAllVisiblePropsBtn = document.getElementById("selectAllVisiblePropsBtn");
 const clearPropertiesBtn = document.getElementById("clearPropertiesBtn");
-const resetFiltersBtn = document.getElementById("resetFiltersBtn");
+const clearSortBtn = document.getElementById("clearSortBtn");
 const toggleFiltersBtn = document.getElementById("toggleFiltersBtn");
 const FILTERS_COLLAPSED_KEY = "suitbrowser.filtersCollapsed";
 
@@ -67,6 +76,315 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+const SUBSCRIPT_CHAR_MAP = {
+  0: "₀",
+  1: "₁",
+  2: "₂",
+  3: "₃",
+  4: "₄",
+  5: "₅",
+  6: "₆",
+  7: "₇",
+  8: "₈",
+  9: "₉",
+  "+": "₊",
+  "-": "₋",
+  "=": "₌",
+  "(": "₍",
+  ")": "₎",
+};
+
+function toSubscriptText(value) {
+  return String(value).replace(/[0-9+\-=()]/g, (char) => SUBSCRIPT_CHAR_MAP[char] || char);
+}
+
+function normalizeSearchText(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/[₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎]/g, (char) => {
+      const entry = Object.entries(SUBSCRIPT_CHAR_MAP).find(([, subscriptChar]) => subscriptChar === char);
+      return entry ? entry[0] : char;
+    });
+}
+
+function richTextHtmlToPlainText(html) {
+  if (!html) {
+    return "";
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = html;
+
+  const renderNode = (node, inSubscript = false) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return inSubscript ? toSubscriptText(node.nodeValue ?? "") : (node.nodeValue ?? "");
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return "";
+    }
+
+    if (node.tagName === "BR") {
+      return "\n";
+    }
+
+    const style = String(node.getAttribute("style") || "");
+    const nextInSubscript =
+      inSubscript ||
+      node.tagName === "SUB" ||
+      /vertical-align\s*:\s*(sub|subscript)/i.test(style);
+
+    return [...node.childNodes].map((child) => renderNode(child, nextInSubscript)).join("");
+  };
+
+  return [...template.content.childNodes].map((child) => renderNode(child)).join("");
+}
+
+function cellDisplayText(cell) {
+  if (cell && typeof cell.h === "string" && cell.h) {
+    return richTextHtmlToPlainText(cell.h);
+  }
+
+  return String(cell?.v ?? "");
+}
+
+function getDisplayTextForColumn(column, value) {
+  const normalizedValue = String(value ?? "");
+  const text = displayValueTextByColumn.get(column)?.get(normalizedValue);
+
+  return text ?? normalizedValue;
+}
+
+function getDisplayTextForHeader(column) {
+  return displayHeaderTextByColumn.get(column) ?? column;
+}
+
+function renderDisplayList(values, column, separator = ", ") {
+  return values.map((value) => getDisplayTextForColumn(column, value)).join(separator);
+}
+
+function normalizeRuleKey(value) {
+  return String(value ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getPropertyRuleKeys(property) {
+  return [
+    property,
+    normalizeRuleKey(property),
+    getDisplayTextForHeader(property),
+    normalizeRuleKey(getDisplayTextForHeader(property)),
+  ].filter((value, index, values) => value && values.indexOf(value) === index);
+}
+
+function getPropertyAvailabilityValue(availability, property) {
+  for (const key of getPropertyRuleKeys(property)) {
+    if (availability.has(key)) {
+      return availability.get(key);
+    }
+  }
+
+  return undefined;
+}
+
+function buildDisplayMaps(sheet, rows) {
+  displayHeaderTextByColumn = new Map();
+  displayValueTextByColumn = new Map();
+
+  if (!rows.length || !sheet || !sheet["!ref"]) {
+    return;
+  }
+
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  const headers = Object.keys(rows[0]);
+
+  headers.forEach((header, colIndex) => {
+    const headerCell = sheet[XLSX.utils.encode_cell({ r: range.s.r, c: colIndex })];
+    displayHeaderTextByColumn.set(header, cellDisplayText(headerCell));
+    displayValueTextByColumn.set(header, new Map());
+  });
+
+  rows.forEach((row, rowIndex) => {
+    const sheetRow = range.s.r + 1 + rowIndex;
+
+    headers.forEach((header, colIndex) => {
+      const cell = sheet[XLSX.utils.encode_cell({ r: sheetRow, c: colIndex })];
+      const normalizedValue = String(row[header] ?? "");
+      const text = cellDisplayText(cell);
+
+      if (text !== normalizedValue) {
+        displayValueTextByColumn.get(header).set(normalizedValue, text);
+      }
+    });
+  });
+}
+
+function buildApplicationPropertyAvailability(sheet) {
+  applicationPropertyAvailabilityByName = new Map();
+
+  if (!sheet || !sheet["!ref"]) {
+    return;
+  }
+
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  if (rows.length < 2) {
+    return;
+  }
+
+  const headers = rows[0].slice(1).map((value) => normalizeRuleKey(value));
+
+  rows.slice(1).forEach((row) => {
+    const application = normalizeRuleKey(row[0]);
+    if (!application) {
+      return;
+    }
+
+    const propertyAvailability = new Map();
+    headers.forEach((property, index) => {
+      if (!property) {
+        return;
+      }
+
+      propertyAvailability.set(property, String(row[index + 1] ?? "").trim() === "1");
+    });
+
+    applicationPropertyAvailabilityByName.set(application, propertyAvailability);
+  });
+}
+
+function buildPreparationPropertyAvailability(sheet) {
+  preparationPropertyAvailabilityByName = new Map();
+
+  if (!sheet || !sheet["!ref"]) {
+    return;
+  }
+
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  if (rows.length < 2) {
+    return;
+  }
+
+  const headers = rows[0].slice(1).map((value) => normalizeRuleKey(value));
+
+  rows.slice(1).forEach((row) => {
+    const preparation = normalizeRuleKey(row[0]);
+    if (!preparation) {
+      return;
+    }
+
+    const propertyAvailability = new Map();
+    headers.forEach((property, index) => {
+      if (!property) {
+        return;
+      }
+
+      propertyAvailability.set(property, String(row[index + 1] ?? "").trim() === "1");
+    });
+
+    preparationPropertyAvailabilityByName.set(preparation, propertyAvailability);
+  });
+}
+
+function buildPropertyLinkMap(sheet) {
+  propertyLinkByName = new Map();
+
+  if (!sheet || !sheet["!ref"]) {
+    return;
+  }
+
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  rows.forEach((row) => {
+    const property = String(row.Properties ?? row["Properties"] ?? "").trim();
+    const link = sanitizeUrl(row["MitoPedia link"] ?? row["MitoPedia Link"]);
+
+    if (property && link) {
+      propertyLinkByName.set(property, link);
+    }
+  });
+}
+
+function buildPreparationLinkMap(sheet) {
+  preparationLinkByName = new Map();
+
+  if (!sheet || !sheet["!ref"]) {
+    return;
+  }
+
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  rows.forEach((row) => {
+    const preparation = String(row.Preparation ?? row["Preparation"] ?? "").trim();
+    const link = sanitizeUrl(row["MitoPedia Link"] ?? row["MitoPedia link"]);
+
+    if (preparation && link) {
+      preparationLinkByName.set(preparation, link);
+    }
+  });
+}
+
+function getAvailablePropertiesForApplication(application, propertyColumns) {
+  const availability = applicationPropertyAvailabilityByName.get(normalizeRuleKey(application));
+  if (!availability) {
+    return null;
+  }
+
+  return new Set(
+    propertyColumns.filter((property) => getPropertyAvailabilityValue(availability, property) === true)
+  );
+}
+
+function getAvailablePropertiesForPreparations(preparations, propertyColumns) {
+  const selectedPreparationList = [...preparations];
+  if (!selectedPreparationList.length) {
+    return null;
+  }
+
+  const availabilityRules = selectedPreparationList
+    .map(
+      (preparation) =>
+        preparationPropertyAvailabilityByName.get(normalizeRuleKey(preparation))
+    )
+    .filter(Boolean);
+
+  if (!availabilityRules.length) {
+    return null;
+  }
+
+  return new Set(
+    propertyColumns.filter((property) =>
+      availabilityRules.some(
+        (availability) => getPropertyAvailabilityValue(availability, property) === true
+      )
+    )
+  );
+}
+
+function intersectPropertyAvailability(propertyColumns, availabilitySets) {
+  const activeSets = availabilitySets.filter(Boolean);
+  if (!activeSets.length) {
+    return new Set(propertyColumns);
+  }
+
+  return new Set(
+    propertyColumns.filter((property) =>
+      activeSets.every((availabilitySet) => availabilitySet.has(property))
+    )
+  );
+}
+
+function getPropertyLink(property) {
+  return propertyLinkByName.get(property) || propertyLinkByName.get(String(property).trim()) || "";
+}
+
+function getPreparationLink(preparation) {
+  return (
+    preparationLinkByName.get(preparation) ||
+    preparationLinkByName.get(String(preparation).trim()) ||
+    ""
+  );
 }
 
 function scoreClass(value) {
@@ -120,7 +438,12 @@ function setLoadingState(message) {
   }
   appSelect.disabled = true;
   propertySearch.disabled = true;
-  resetFiltersBtn.disabled = true;
+  if (selectAllVisiblePreparationsBtn) {
+    selectAllVisiblePreparationsBtn.disabled = true;
+  }
+  if (clearPreparationsBtn) {
+    clearPreparationsBtn.disabled = true;
+  }
   preparationOptions.textContent = "Loading workbook...";
   propertyOptions.textContent = "Loading workbook...";
   resultsSummary.textContent = "Loading workbook...";
@@ -149,8 +472,21 @@ function renderPreparations() {
   preparationOptions.innerHTML = "";
 
   if (!allPreparations.length) {
+    if (selectAllVisiblePreparationsBtn) {
+      selectAllVisiblePreparationsBtn.disabled = true;
+    }
+    if (clearPreparationsBtn) {
+      clearPreparationsBtn.disabled = true;
+    }
     preparationOptions.textContent = "No preparations available.";
     return;
+  }
+
+  if (selectAllVisiblePreparationsBtn) {
+    selectAllVisiblePreparationsBtn.disabled = selectedPreparations.size === allPreparations.length;
+  }
+  if (clearPreparationsBtn) {
+    clearPreparationsBtn.disabled = !selectedPreparations.size;
   }
 
   allPreparations.forEach((preparation) => {
@@ -171,7 +507,28 @@ function renderPreparations() {
     });
 
     const span = document.createElement("span");
-    span.textContent = preparation;
+
+    const prepText = document.createElement("span");
+    prepText.className = "preparation-chip-text";
+    prepText.textContent = getDisplayTextForColumn(PREPARATION_COLUMN, preparation);
+
+    const preparationLink = getPreparationLink(preparation);
+    span.appendChild(prepText);
+
+    if (preparationLink) {
+      const infoBadge = document.createElement("a");
+      infoBadge.className = "preparation-info-badge";
+      infoBadge.textContent = "i";
+      infoBadge.title = `Open MitoPedia page for ${getDisplayTextForColumn(PREPARATION_COLUMN, preparation)}`;
+      infoBadge.href = preparationLink;
+      infoBadge.target = "_blank";
+      infoBadge.rel = "noreferrer";
+      infoBadge.setAttribute(
+        "aria-label",
+        `Open MitoPedia page for ${getDisplayTextForColumn(PREPARATION_COLUMN, preparation)}`
+      );
+      span.appendChild(infoBadge);
+    }
 
     label.append(input, span);
     preparationOptions.appendChild(label);
@@ -179,40 +536,70 @@ function renderPreparations() {
 }
 
 function renderPropertyOptions() {
-  const searchValue = propertySearch.value.trim().toLowerCase();
+  const searchValue = normalizeSearchText(propertySearch.value.trim());
+  const selectedApplication = appSelect.value;
   const propertyRows = getRowsForPropertyOptions();
   const propertyColumns = getPropertyColumns();
-  const availableProperties = new Set(getAvailablePropertyColumns(propertyRows));
+  const baseAvailableProperties =
+    getAvailablePropertiesForApplication(selectedApplication, propertyColumns) ||
+    new Set(getAvailablePropertyColumns(propertyRows));
+  const preparationAvailableProperties = getAvailablePropertiesForPreparations(
+    selectedPreparations,
+    propertyColumns
+  );
+  const availableProperties = intersectPropertyAvailability(propertyColumns, [
+    baseAvailableProperties,
+    preparationAvailableProperties,
+  ]);
   filteredProperties = propertyColumns.filter((property) =>
-    property.toLowerCase().includes(searchValue)
+    normalizeSearchText(property).includes(searchValue)
   );
   filteredAvailableProperties = filteredProperties.filter((property) =>
     availableProperties.has(property)
+  );
+  selectedProperties = new Set(
+    [...selectedProperties].filter((property) => availableProperties.has(property))
   );
 
   propertyOptions.innerHTML = "";
 
   if (!filteredProperties.length) {
     propertyOptions.textContent = propertyColumns.length
-      ? "No properties match this search."
-      : "No properties available.";
+      ? "No research questions match this search."
+      : "No research questions available.";
     return;
   }
 
-  filteredProperties.forEach((property) => {
-    const label = document.createElement("label");
-    label.className = "property-option";
+  filteredProperties.forEach((property, index) => {
+    const option = document.createElement("div");
+    option.className = "property-option";
     const isAvailable = availableProperties.has(property);
+    const isUnavailableForPreparation =
+      preparationAvailableProperties && !preparationAvailableProperties.has(property);
+    const isUnavailableForApplication = !baseAvailableProperties.has(property);
 
     if (!isAvailable) {
-      label.classList.add("unavailable");
+      option.classList.add("unavailable");
     }
 
+    const propertySlug = property
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "property";
+    const optionId = `property-option-${propertySlug}-${index}`;
     const input = document.createElement("input");
     input.type = "checkbox";
+    input.id = optionId;
     input.value = property;
     input.checked = selectedProperties.has(property);
+    input.disabled = !isAvailable;
     input.addEventListener("change", () => {
+      if (!isAvailable) {
+        input.checked = false;
+        selectedProperties.delete(property);
+        return;
+      }
+
       if (input.checked) {
         selectedProperties.add(property);
       } else {
@@ -221,12 +608,44 @@ function renderPropertyOptions() {
       renderTable();
     });
 
-    const span = document.createElement("span");
-    span.textContent = property;
-    span.title = isAvailable ? property : `${property} is unavailable for the current filters`;
+    const shell = document.createElement("div");
+    shell.className = "property-card-shell";
 
-    label.append(input, span);
-    propertyOptions.appendChild(label);
+    const label = document.createElement("label");
+    label.className = "property-card";
+    label.htmlFor = optionId;
+    label.title = isAvailable
+      ? property
+      : isUnavailableForPreparation
+        ? `${property} is unavailable for the selected preparation`
+        : selectedApplication && isUnavailableForApplication
+        ? `${property} is unavailable for the selected application`
+        : `${property} is unavailable for the current filters`;
+
+    const labelText = document.createElement("span");
+    labelText.className = "property-card-label";
+    labelText.textContent = getDisplayTextForHeader(property);
+
+    const propertyLink = getPropertyLink(property);
+
+    if (propertyLink) {
+      shell.classList.add("has-info");
+      const infoBadge = document.createElement("a");
+      infoBadge.className = "property-info-badge";
+      infoBadge.textContent = "i";
+      infoBadge.title = `Open MitoPedia page for ${property}`;
+      infoBadge.href = propertyLink;
+      infoBadge.target = "_blank";
+      infoBadge.rel = "noreferrer";
+      infoBadge.setAttribute("aria-label", `Open MitoPedia page for ${property}`);
+      shell.append(label, infoBadge);
+    } else {
+      shell.appendChild(label);
+    }
+
+    label.appendChild(labelText);
+    option.append(input, shell);
+    propertyOptions.appendChild(option);
   });
 }
 
@@ -285,7 +704,8 @@ function setFiltersCollapsed(collapsed) {
 
   appLayout.classList.toggle("filters-collapsed", collapsed);
   toggleFiltersBtn.setAttribute("aria-expanded", String(!collapsed));
-  toggleFiltersBtn.textContent = collapsed ? "Show filters" : "Hide filters";
+  toggleFiltersBtn.setAttribute("aria-label", collapsed ? "Show filters" : "Hide filters");
+  toggleFiltersBtn.setAttribute("title", collapsed ? "Show filters" : "Hide filters");
 
   try {
     localStorage.setItem(FILTERS_COLLAPSED_KEY, collapsed ? "true" : "false");
@@ -320,6 +740,7 @@ function getGroupedRows(rows, selectedPropertyList) {
       groups.set(name, {
         name,
         preparations: new Set(),
+        protocolPreparations: new Set(),
         technicalNames: new Set(),
         mitoPediaLinks: new Set(),
         propertyValues: new Map(),
@@ -332,6 +753,11 @@ function getGroupedRows(rows, selectedPropertyList) {
 
     if (preparation) {
       group.preparations.add(preparation);
+    }
+
+    const protocolPreparation = String(row[PROTOCOL_PREPARATION_COLUMN] ?? "").trim();
+    if (protocolPreparation) {
+      group.protocolPreparations.add(protocolPreparation);
     }
 
     const technicalName = String(row[TECHNICAL_NAME_COLUMN] ?? "").trim();
@@ -371,27 +797,55 @@ function getGroupedRows(rows, selectedPropertyList) {
       .map((property) => group.propertyScores.get(property))
       .filter((score) => score !== undefined);
 
-    const averageScore = numericScores.length
-      ? numericScores.reduce((sum, score) => sum + score, 0) / numericScores.length
-      : 0;
+    const totalScore = numericScores.reduce((sum, score) => sum + score, 0);
+    const averageScore = numericScores.length ? totalScore / numericScores.length : 0;
 
     return {
       ...group,
+      totalScore,
       averageScore,
     };
   });
 }
 
+function getSortScore(group, property) {
+  if (!property) {
+    return group.totalScore;
+  }
+
+  const score = group.propertyScores.get(property);
+  return score === undefined ? -1 : score;
+}
+
+function updateSortResetControl(selectedPropertyList) {
+  if (selectedSortProperty && !selectedPropertyList.includes(selectedSortProperty)) {
+    selectedSortProperty = "";
+  }
+
+  if (clearSortBtn) {
+    clearSortBtn.disabled = !selectedSortProperty;
+  }
+}
+
 function buildTableMarkup(rankedRows, selectedPropertyList) {
   const headerCells = selectedPropertyList
-    .map(
-      (property) =>
-        `<th class="diag-header"><span>${escapeHtml(property)}</span></th>`
-    )
+    .map((property) => {
+      const isActiveSort = selectedSortProperty === property;
+      return `
+        <th class="diag-header${isActiveSort ? " active-sort" : ""}" aria-sort="${isActiveSort ? "descending" : "none"}">
+          <button class="property-sort-btn" type="button" data-sort-property="${escapeHtml(property)}" title="Sort protocols by ${escapeHtml(property)}">
+            <span>${escapeHtml(getDisplayTextForHeader(property))}</span>
+            <small>${isActiveSort ? "Sorted" : "Sort"}</small>
+          </button>
+        </th>`;
+    })
     .join("");
 
   const bodyRows = rankedRows
     .map((group) => {
+      const technicalNames = [...group.technicalNames].sort();
+      const browserPreparations = [...group.preparations].sort();
+      const protocolPreparations = [...group.protocolPreparations].sort();
       const scoreCells = selectedPropertyList
         .map((property) => {
           const values = [...(group.propertyValues.get(property) || [])];
@@ -409,22 +863,43 @@ function buildTableMarkup(rankedRows, selectedPropertyList) {
         })
         .join("");
 
-      const preparation = [...group.preparations].sort().join(", ");
-      const technicalName = [...group.technicalNames].sort().join(" / ");
       const mitoPediaLink = [...group.mitoPediaLinks][0] || "";
+      const preparationValues = [];
+
+      if (protocolPreparations.length) {
+        preparationValues.push({
+          column: PROTOCOL_PREPARATION_COLUMN,
+          values: protocolPreparations,
+        });
+      }
+
+      if (
+        browserPreparations.length &&
+        browserPreparations.join("\u0000") !== protocolPreparations.join("\u0000")
+      ) {
+        preparationValues.push({
+          column: PREPARATION_COLUMN,
+          values: browserPreparations,
+        });
+      }
+
+      const preparationLines = preparationValues
+        .map(({ column, values }) => `<small>${escapeHtml(renderDisplayList(values, column))}</small>`)
+        .join("");
 
       return `
         <tr>
           <th scope="row" class="row-header">
             <details class="row-protocol-details">
-              <summary>${escapeHtml(group.name)}</summary>
+              <summary>${escapeHtml(getDisplayTextForColumn(NAME_COLUMN, group.name))}</summary>
               <div class="row-protocol-meta">
-                ${technicalName ? `<small class="row-tech-name">${escapeHtml(technicalName)}</small>` : ""}
+                ${technicalNames.length ? `<small class="row-tech-name">${escapeHtml(technicalNames.map((value) => getDisplayTextForColumn(TECHNICAL_NAME_COLUMN, value)).join(" / "))}</small>` : ""}
                 ${mitoPediaLink ? `<a class="row-meta-link" href="${escapeHtml(mitoPediaLink)}" target="_blank" rel="noreferrer">MitoPedia page</a>` : ""}
               </div>
             </details>
+            <small>Total score: ${group.totalScore}</small>
             <small>Average score: ${group.averageScore.toFixed(2)}</small>
-            ${preparation ? `<small>${escapeHtml(preparation)}</small>` : ""}
+            ${preparationLines}
           </th>
           ${scoreCells}
         </tr>
@@ -493,6 +968,7 @@ function renderTable() {
   const selectedPropertyList = getPropertyColumns().filter((property) =>
     selectedProperties.has(property)
   );
+  updateSortResetControl(selectedPropertyList);
   const visibleRows = getFilteredRows().filter((row) => {
     if (!selectedPropertyList.length) {
       return true;
@@ -502,22 +978,30 @@ function renderTable() {
   });
   const groupedRows = getGroupedRows(visibleRows, selectedPropertyList);
   const rankedRows = groupedRows
-    .filter((group) => group.averageScore > 0)
+    .filter((group) => group.totalScore > 0)
     .sort((a, b) => {
-      if (b.averageScore !== a.averageScore) {
-        return b.averageScore - a.averageScore;
+      const sortScoreA = getSortScore(a, selectedSortProperty);
+      const sortScoreB = getSortScore(b, selectedSortProperty);
+
+      if (sortScoreB !== sortScoreA) {
+        return sortScoreB - sortScoreA;
       }
+
+      if (b.totalScore !== a.totalScore) {
+        return b.totalScore - a.totalScore;
+      }
+
       return a.name.localeCompare(b.name);
     });
 
-  resetFiltersBtn.disabled = false;
-
   if (!selectedPropertyList.length) {
-    resultsSummary.textContent = `${groupedRows.length} protocol${groupedRows.length === 1 ? "" : "s"} match the current filters. Select one or more properties to compare.`;
+    selectedSortProperty = "";
+    updateSortResetControl(selectedPropertyList);
+    resultsSummary.textContent = `${groupedRows.length} protocol${groupedRows.length === 1 ? "" : "s"} match the current filters. Select one or more research questions to compare.`;
     setModalSummary(resultsSummary.textContent);
     setMatrixEmptyState(
-      "No properties selected",
-      "Choose one or more properties to render the protocol matrix."
+      "No research questions selected",
+      "Choose one or more research questions to render the protocol matrix."
     );
     return;
   }
@@ -532,7 +1016,10 @@ function renderTable() {
     return;
   }
 
-  resultsSummary.textContent = `${rankedRows.length} protocol${rankedRows.length === 1 ? "" : "s"} shown, sorted by average suitability across ${selectedPropertyList.length} propert${selectedPropertyList.length === 1 ? "y" : "ies"}.`;
+  const sortDescription = selectedSortProperty
+    ? `sorted by ${selectedSortProperty}, then total applicability score`
+    : `sorted by total applicability score across ${selectedPropertyList.length} research question${selectedPropertyList.length === 1 ? "" : "s"}`;
+  resultsSummary.textContent = `${rankedRows.length} protocol${rankedRows.length === 1 ? "" : "s"} shown, ${sortDescription}.`;
   setModalSummary(resultsSummary.textContent);
 
   setMatrixMarkup(buildTableMarkup(rankedRows, selectedPropertyList));
@@ -548,7 +1035,7 @@ function setupUi() {
   applications.forEach((application) => {
     const option = document.createElement("option");
     option.value = application;
-    option.textContent = application;
+    option.textContent = getDisplayTextForColumn(APPLICATION_COLUMN, application);
     appSelect.appendChild(option);
   });
 
@@ -564,9 +1051,18 @@ function setupUi() {
 }
 
 function loadWorkbook(arrayBuffer) {
-  const workbook = XLSX.read(arrayBuffer, { type: "array" });
+  const workbook = XLSX.read(arrayBuffer, { type: "array", cellHTML: true });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  const applicationRulesSheet = workbook.Sheets["Rules properties & applications"];
+  const propertyLinksSheet = workbook.Sheets["Links properties"];
+  const preparationLinksSheet = workbook.Sheets["Links preparations"];
+  const preparationRulesSheet = workbook.Sheets["Rules properties & preparation"];
   rawData = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+  buildDisplayMaps(firstSheet, rawData);
+  buildApplicationPropertyAvailability(applicationRulesSheet);
+  buildPreparationPropertyAvailability(preparationRulesSheet);
+  buildPropertyLinkMap(propertyLinksSheet);
+  buildPreparationLinkMap(preparationLinksSheet);
   setupUi();
 }
 
@@ -605,6 +1101,24 @@ propertySearch.addEventListener("input", () => {
   renderTable();
 });
 
+function handleTableSortClick(event) {
+  const sortButton = event.target.closest("[data-sort-property]");
+  if (!sortButton) {
+    return;
+  }
+
+  selectedSortProperty = sortButton.dataset.sortProperty || "";
+  renderTable();
+}
+
+if (tableWrap) {
+  tableWrap.addEventListener("click", handleTableSortClick);
+}
+
+if (matrixModalWrap) {
+  matrixModalWrap.addEventListener("click", handleTableSortClick);
+}
+
 if (reloadDefaultBtn) {
   reloadDefaultBtn.addEventListener("click", fetchDefaultWorkbook);
 }
@@ -618,6 +1132,13 @@ if (toggleFiltersBtn) {
 
 if (openMatrixModalBtn) {
   openMatrixModalBtn.addEventListener("click", openMatrixModal);
+}
+
+if (clearSortBtn) {
+  clearSortBtn.addEventListener("click", () => {
+    selectedSortProperty = "";
+    renderTable();
+  });
 }
 
 if (closeMatrixModalBtn) {
@@ -634,10 +1155,21 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-clearPreparationsBtn.addEventListener("click", () => {
-  selectedPreparations = new Set();
-  syncUiAndRender();
-});
+if (selectAllVisiblePreparationsBtn) {
+  selectAllVisiblePreparationsBtn.addEventListener("click", () => {
+    uniqueValues(getRowsForPreparationOptions(), PREPARATION_COLUMN).forEach((preparation) =>
+      selectedPreparations.add(preparation)
+    );
+    syncUiAndRender();
+  });
+}
+
+if (clearPreparationsBtn) {
+  clearPreparationsBtn.addEventListener("click", () => {
+    selectedPreparations = new Set();
+    syncUiAndRender();
+  });
+}
 
 selectAllVisiblePropsBtn.addEventListener("click", () => {
   filteredAvailableProperties.forEach((property) => selectedProperties.add(property));
@@ -647,16 +1179,9 @@ selectAllVisiblePropsBtn.addEventListener("click", () => {
 
 clearPropertiesBtn.addEventListener("click", () => {
   selectedProperties = new Set();
+  selectedSortProperty = "";
   renderPropertyOptions();
   renderTable();
-});
-
-resetFiltersBtn.addEventListener("click", () => {
-  appSelect.value = "";
-  propertySearch.value = "";
-  selectedPreparations = new Set();
-  selectedProperties = new Set();
-  syncUiAndRender();
 });
 
 fetchDefaultWorkbook();

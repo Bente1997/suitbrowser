@@ -18,62 +18,60 @@
         <p class="eyebrow">SUITbrowser</p>
         <h1>Protocol finder</h1>
       </div>
-      <div class="hero-card legend-card">
-        <div class="legend-title">Suitability score</div>
-        <div class="legend-grid">
-          <span class="score-pill score-0">0: Not applicable</span>
-          <span class="score-pill score-1">1: Not recommended</span>
-          <span class="score-pill score-2">2: Kind of suitable</span>
-          <span class="score-pill score-3">3: Very suitable</span>
-        </div>
-      </div>
     </header>
 
     <main id="appLayout" class="layout">
       <aside id="controlsPanel" class="panel controls-panel">
         <div class="controls-toolbar">
-          <h2>Filters</h2>
           <button
             id="toggleFiltersBtn"
             class="ghost-btn controls-toggle"
             type="button"
             aria-expanded="true"
             aria-controls="controlsPanelContent"
+            aria-label="Hide filters"
+            title="Hide filters"
           >
-            Hide filters
+            <svg class="controls-toggle-icon" aria-hidden="true" viewBox="0 0 20 20" focusable="false">
+              <path d="M5 7L10 13L15 7"></path>
+            </svg>
           </button>
         </div>
 
         <div id="controlsPanelContent" class="controls-panel-content">
           <section class="panel-section">
-            <h2>Filter protocols</h2>
-
-            <label class="field-label" for="applicationSelect">Application</label>
-            <select id="applicationSelect" class="select-field" disabled>
-              <option value="">Loading workbook...</option>
-            </select>
-
-            <div class="field-block">
-              <div class="field-label-row">
-                <label class="field-label">Preparation</label>
-                <button id="clearPreparationsBtn" class="tiny-btn" type="button">Clear</button>
+            <div class="filter-top-grid">
+              <div class="filter-column">
+                <label class="field-label" for="applicationSelect">Application</label>
+                <select id="applicationSelect" class="select-field" disabled>
+                  <option value="">Loading workbook...</option>
+                </select>
               </div>
-              <div id="preparationOptions" class="chip-list empty-state-inline">
-                No preparations available yet.
+
+              <div class="field-block filter-column preparation-field">
+                <div class="field-label-row">
+                  <label class="field-label">Preparation</label>
+                  <div class="inline-actions">
+                    <button id="selectAllVisiblePreparationsBtn" class="tiny-btn" type="button">All</button>
+                    <button id="clearPreparationsBtn" class="tiny-btn" type="button">Clear</button>
+                  </div>
+                </div>
+                <div id="preparationOptions" class="chip-list empty-state-inline">
+                  No preparations available yet.
+                </div>
               </div>
             </div>
           </section>
 
           <section class="panel-section properties-section">
             <div class="section-heading-row">
-              <h2>Properties to compare</h2>
+              <h2>Research Questions</h2>
               <div class="inline-actions">
                 <button id="selectAllVisiblePropsBtn" class="tiny-btn" type="button">All</button>
                 <button id="clearPropertiesBtn" class="tiny-btn" type="button">Clear</button>
               </div>
             </div>
-            <label class="field-label" for="propertySearch">Search properties</label>
-            <input id="propertySearch" class="text-field" type="text" placeholder="Search property names..." disabled />
+            <input id="propertySearch" class="text-field" type="text" placeholder="Search research questions..." disabled />
             <div id="propertyOptions" class="property-list empty-state-inline">
               Loading workbook...
             </div>
@@ -88,15 +86,25 @@
             <p id="resultsSummary" class="subtle-text">Loading workbook...</p>
           </div>
           <div class="results-actions">
+            <button id="clearSortBtn" class="ghost-btn" type="button" disabled>Reset to total applicability sorting</button>
             <button id="openMatrixModalBtn" class="ghost-btn" type="button" disabled aria-haspopup="dialog" aria-controls="matrixModal">Enlarge</button>
-            <button id="resetFiltersBtn" class="ghost-btn" type="button" disabled>Reset filters</button>
+          </div>
+        </div>
+
+        <div class="legend-card matrix-legend">
+          <div class="legend-title">Suitability score</div>
+          <div class="legend-grid">
+            <span class="score-pill score-0">0: Not applicable</span>
+            <span class="score-pill score-1">1: Not recommended</span>
+            <span class="score-pill score-2">2: Kind of suitable</span>
+            <span class="score-pill score-3">3: Very suitable</span>
           </div>
         </div>
 
         <div id="tableWrap" class="table-wrap empty-wrap">
           <div class="empty-state-box">
             <h3>No data yet</h3>
-            <p>Once the bundled workbook is loaded, protocols will appear as rows and selected properties as diagonal column headers.</p>
+            <p>Once the bundled workbook is loaded, protocols will appear as rows and selected research questions as diagonal column headers.</p>
           </div>
         </div>
       </section>
